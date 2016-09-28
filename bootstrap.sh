@@ -41,19 +41,34 @@ if [ "$1" = "1" ]; then
   wget -q -O $HOME/bootstrap.env http://169.254.169.254/latest/user-data
   source $HOME/bootstrap.env
 
-  # Make sure we've accepted github's SSH identity
-  ssh -oStrictHostKeyChecking=no git@github.com
+  # Reset the crontab to empty (there may be nothing else to do)
+  crontab -r
 
   if [ "$GIT_REPO" != "" ]; then
-    # A git repository was provided, clone it and continue with the project's
-    # bootstrap script.
+    # Make sure we've accepted github's SSH identity
+    ssh -oStrictHostKeyChecking=no git@github.com
+
+    # A git repository was provided, clone it
     project_name=$(echo "${GIT_REPO}" | cut -f 2 -d / | cut -f 1 -d .)
     git clone $GIT_REPO $HOME/$project_name
-    echo "@reboot sleep 10 && ssh -oStrictHostKeyChecking=no ubuntu@localhost ${HOME}/$project_name/config/bootstrap.sh >> ${HOME}/bootstrap.log 2>&1" | crontab -
-  else
-    # No repository, nothing left to do.
-    crontab -r
+
+    # Does the current branch match the desired branch?
+    git_branch=$GIT_BRANCH
+    if [ "$git_branch" = "" ]; then
+      git_branch=master
+    fi
+    cd $HOME/$project_name
+    if [ "$git_branch" != `git branch | grep \\* | cut -f 2 -d \\ ` ]; then
+      git checkout $git_branch
+    fi
+    cd $HOME
+
+    # Continue with the project's bootstrap script, if one exists
+    if [ -f $HOME/$project_name/bootstrap.sh ]; then
+      echo "@reboot sleep 10 && ssh -oStrictHostKeyChecking=no ubuntu@localhost ${HOME}/$project_name/bootstrap.sh >> ${HOME}/bootstrap.log 2>&1" | crontab -
+    fi
   fi
+
   sudo reboot
   exit 0
 fi
